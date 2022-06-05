@@ -27,6 +27,7 @@ import net.irisshaders.lilybot.extensions.util.GalleryChannel
 import net.irisshaders.lilybot.extensions.util.Github
 import net.irisshaders.lilybot.extensions.util.InfoCommands
 import net.irisshaders.lilybot.extensions.util.ModUtilities
+import net.irisshaders.lilybot.extensions.util.PluralKitUtils
 import net.irisshaders.lilybot.extensions.util.PublicUtilities
 import net.irisshaders.lilybot.extensions.util.RoleMenu
 import net.irisshaders.lilybot.extensions.util.StartupHooks
@@ -87,6 +88,7 @@ suspend fun main() {
 			add(::MemberJoinLeave)
 			add(::MessageDelete)
 			add(::ModUtilities)
+			add(::PluralKitUtils)
 			add(::PublicUtilities)
 			add(::Report)
 			add(::RoleMenu)

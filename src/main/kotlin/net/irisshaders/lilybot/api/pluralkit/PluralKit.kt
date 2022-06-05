@@ -8,8 +8,6 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.datetime.Instant
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -20,6 +18,8 @@ internal const val PK_API_URL = "https://api.pluralkit.me/v2"
 
 /** The URL of messages from the [PluralKit API](https://pluralkit.me/api). */
 internal const val MESSAGE_URL = "$PK_API_URL/messages/{id}"
+
+internal const val SYSTEM_URL = "$PK_API_URL/systems/{systemRef}"
 
 object PluralKit {
 
@@ -56,6 +56,8 @@ object PluralKit {
 	 * @since 3.3.2
 	 */
 	suspend fun getProxiedMessageAuthorId(id: Snowflake) = getProxiedMessageAuthorId(id.toString())
+
+	suspend fun getSystem(senderAccountId: Snowflake) = getSystem(senderAccountId.toString())
 
 	/**
 	 * Using a provided message ID, we check against the [PluralKit API](https://pluralkit.me/api/) to find out if
@@ -114,29 +116,22 @@ object PluralKit {
 
 		return authorId
 	}
-}
 
-/**
- * This is the data class for a PluralKit message, as per the documentation on the
- * [PluralKit Docs site](https://pluralkit.me/api/models/#message-model). It is missing the System and Member objects
- * currently (31st May), since for the use case above, they're not fully required.
- *
- * **NOTE:** All values are encoded as a string by the api for precision reasons.
- *
- * @param timestamp The time the message was sent
- * @param id The ID of the message sent by the webhook
- * @param original The ID of the (now-deleted) message that triggered the proxy
- * @param sender The user ID of the account that triggered the proxy.
- * @param channel The ID of the channel the message was sent in
- * @param guild The ID of the server the message was sent in
- * @since 3.3.0
- */
-@Serializable
-data class PluralKitMessage(
-	val timestamp: Instant,
-	val id: Snowflake,
-	val original: Snowflake,
-	val sender: Snowflake,
-	val channel: Snowflake,
-	val guild: Snowflake
-)
+	private suspend fun getSystem(senderAccountId: String): PluralKitSystem? {
+		val url = SYSTEM_URL.replace("{systemRef}", senderAccountId)
+
+		var returnSystem: PluralKitSystem? = null
+
+		try {
+			val system: PluralKitSystem = client.get(url).body()
+
+			returnSystem = system
+		} catch (e: ClientRequestException) {
+			if (e.response.status.value !in 200 until 300) {
+				returnSystem = null
+			}
+		}
+
+		return returnSystem
+	}
+}
