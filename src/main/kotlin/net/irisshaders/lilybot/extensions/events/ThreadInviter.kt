@@ -113,23 +113,32 @@ class ThreadInviter : Extension() {
 					event.message.delete("User already has a thread")
 					response.delete(10000L, false)
 				} else {
+					val title = if (event.message.content.isNotEmpty()) {
+						"${user.asUser().username} - ${
+							event.message.content.trim().split("\n").firstOrNull()?.take(75)
+						}"
+					} else {
+						"Support thread for ${user.asUser().username}"
+					}
+
 					val thread =
 					// Create a thread with the message sent, title it with the users tag and set the archive
 						// duration to the channels settings. If they're null, set it to one day
 						textChannel.startPublicThreadWithMessage(
 							event.message.id,
-							"Support thread for " + user.asUser().username,
+							title,
 							event.message.getChannel().data.defaultAutoArchiveDuration.value ?: ArchiveDuration.Day
 						)
 
 					DatabaseHelper.setThreadOwner(thread.id, userId)
 
-					val editMessage = thread.createMessage("edit message")
+					val editMessage = thread.createMessage("Welcome to your support thread!")
 
 					editMessage.edit {
-						this.content =
-							user.asUser().mention + ", the " + event.getGuild()
-								?.getRole(config.supportTeam)?.mention + " will be with you shortly!"
+						content =
+							"${user.asUser().mention}, the ${event.getGuild()?.getRole(config.supportTeam)?.mention} " +
+									"will be with you shortly!\nUse `/thread rename` to give your thread a informative\n" +
+									"name, so the Support Team have an idea of what to do, when they come to help."
 					}
 
 					if (textChannel.messages.last().author?.id == kord.selfId) {
