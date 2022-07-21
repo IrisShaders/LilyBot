@@ -7,6 +7,7 @@ import com.kotlindiscord.kord.extensions.commands.application.slash.converters.i
 import com.kotlindiscord.kord.extensions.commands.application.slash.ephemeralSubCommand
 import com.kotlindiscord.kord.extensions.commands.application.slash.publicSubCommand
 import com.kotlindiscord.kord.extensions.commands.converters.impl.coalescingDuration
+import com.kotlindiscord.kord.extensions.commands.converters.impl.coalescingOptionalDuration
 import com.kotlindiscord.kord.extensions.commands.converters.impl.defaultingBoolean
 import com.kotlindiscord.kord.extensions.commands.converters.impl.int
 import com.kotlindiscord.kord.extensions.commands.converters.impl.optionalString
@@ -35,9 +36,8 @@ import dev.kord.rest.request.KtorRequestException
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.RemindMeCollection
 import net.irisshaders.lilybot.utils.botHasChannelPerms
-import kotlin.time.Duration.Companion.days
 
 /**
  * The class that contains the reminding functions in the bot.
@@ -86,27 +86,38 @@ class Reminders : Extension() {
 						return@action
 					}
 
+					if (arguments.repeating && arguments.repeatingInterval == null) {
+						respond {
+							content = "You must specify a repeating interval if you are setting a repeating reminder"
+						}
+						return@action
+					}
+
 					val response = respond {
 						content = if (arguments.customMessage.isNullOrEmpty()) {
 							if (arguments.repeating) {
 								"Repeating reminder set!\nI will remind you ${
 									remindTime.toDiscord(TimestampType.RelativeTime)
 								} at ${remindTime.toDiscord(TimestampType.ShortTime)} " +
-										"everyday unless cancelled. Use `/remove remove` to cancel"
+										"everyday unless cancelled. This reminder will repeat every `${
+											arguments.repeatingInterval.toString().lowercase()
+												.replace("pt", "")
+												.replace("p", "")
+										}`. Use `/remove remove` to cancel"
 							} else {
 								"Reminder set!\nI will remind you ${
 									remindTime.toDiscord(TimestampType.RelativeTime)
-								} at ${remindTime.toDiscord(TimestampType.ShortTime)}. That's `${
-									duration.toDuration(TimeZone.UTC)
-								}` after this message was sent."
+								} at ${remindTime.toDiscord(TimestampType.ShortTime)}."
 							}
 						} else {
 							if (arguments.repeating) {
 								"Repeating reminder set with message ${arguments.customMessage}!\nI will remind you ${
 									remindTime.toDiscord(TimestampType.RelativeTime)
-								} at ${remindTime.toDiscord(TimestampType.ShortTime)}. That's `${
-									duration.toDuration(TimeZone.UTC)
-								}` after this message was sent. Use `/reminder remove` to cancel"
+								} at ${remindTime.toDiscord(TimestampType.ShortTime)}. This reminder will repeat every `${
+									arguments.repeatingInterval.toString().lowercase()
+										.replace("pt", "")
+										.replace("p", "")
+								}`. Use `/reminder remove` to cancel"
 							} else {
 								"Reminder set with message ${arguments.customMessage}!\nI will remind you ${
 									remindTime.toDiscord(TimestampType.RelativeTime)
@@ -118,14 +129,14 @@ class Reminders : Extension() {
 					}
 
 					var counter = 0
-					DatabaseHelper.getReminders().forEach {
+					RemindMeCollection().getReminders().forEach {
 						if (it.userId == user.id) {
 							counter += 1
 						}
 					}
 					counter++ // Add one to the final counter, since we're adding a new one to the list of reminders
 
-					DatabaseHelper.setReminder(
+					RemindMeCollection().setReminder(
 						setTime,
 						guild!!.id,
 						user.id,
@@ -134,6 +145,7 @@ class Reminders : Extension() {
 						response.message.getJumpUrl(),
 						arguments.customMessage,
 						arguments.repeating,
+						arguments.repeatingInterval,
 						counter
 					)
 				}
@@ -179,7 +191,7 @@ class Reminders : Extension() {
 				}
 
 				action {
-					val reminders = DatabaseHelper.getReminders()
+					val reminders = RemindMeCollection().getReminders()
 
 					var response = ""
 
@@ -199,7 +211,7 @@ class Reminders : Extension() {
 									}\n---\n"
 
 							val messageId = Snowflake(it.originalMessageUrl.split("/")[6])
-							DatabaseHelper.removeReminder(guild!!.id, user.id, arguments.reminder)
+							RemindMeCollection().removeReminder(guild!!.id, user.id, arguments.reminder)
 							@Suppress("DuplicatedCode")
 							val message = this@ephemeralSubCommand.kord.getGuild(it.guildId)!!
 								.getChannelOf<GuildMessageChannel>(it.channelId)
@@ -238,7 +250,7 @@ class Reminders : Extension() {
 				}
 
 				action {
-					val reminders = DatabaseHelper.getReminders()
+					val reminders = RemindMeCollection().getReminders()
 
 					// FIXME Duplicaten't the code
 					@Suppress("DuplicatedCode")
@@ -246,15 +258,17 @@ class Reminders : Extension() {
 						when (arguments.reminderType) {
 							"all" -> {
 								if (it.guildId == guild?.id && it.userId == user.id) {
-									DatabaseHelper.removeReminder(guild!!.id, user.id, it.id)
+									RemindMeCollection().removeReminder(guild!!.id, user.id, it.id)
 									val messageId = Snowflake(it.originalMessageUrl.split("/")[6])
 									val message = this@ephemeralSubCommand.kord.getGuild(it.guildId)!!
 										.getChannelOf<GuildMessageChannel>(it.channelId)
 										.getMessage(messageId)
 
 									message.edit {
-											content = "${message.content} ${if (it.repeating) "**Repeating" else "**"} Reminder cancelled.**"
-										}
+										content = "${message.content} ${
+											if (it.repeating) "**Repeating" else "**"
+										} Reminder cancelled.**"
+									}
 								}
 
 								respond {
@@ -264,15 +278,15 @@ class Reminders : Extension() {
 
 							"repeating" -> {
 								if (it.guildId == guild?.id && it.userId == user.id && it.repeating) {
-									DatabaseHelper.removeReminder(guild!!.id, user.id, it.id)
+									RemindMeCollection().removeReminder(guild!!.id, user.id, it.id)
 									val messageId = Snowflake(it.originalMessageUrl.split("/")[6])
 									val message = this@ephemeralSubCommand.kord.getGuild(it.guildId)!!
 										.getChannelOf<GuildMessageChannel>(it.channelId)
 										.getMessage(messageId)
 
 									message.edit {
-											content = "${message.content} **Repeating Reminder cancelled.**"
-										}
+										content = "${message.content} **Repeating Reminder cancelled.**"
+									}
 								}
 
 								respond {
@@ -282,15 +296,15 @@ class Reminders : Extension() {
 
 							"non-repeating" -> {
 								if (it.guildId == guild?.id && it.userId == user.id && !it.repeating) {
-									DatabaseHelper.removeReminder(guild!!.id, user.id, it.id)
+									RemindMeCollection().removeReminder(guild!!.id, user.id, it.id)
 									val messageId = Snowflake(it.originalMessageUrl.split("/")[6])
 									val message = this@ephemeralSubCommand.kord.getGuild(it.guildId)!!
 										.getChannelOf<GuildMessageChannel>(it.channelId)
 										.getMessage(messageId)
 
 									message.edit {
-											content = "${message.content} **Reminder cancelled.**"
-										}
+										content = "${message.content} **Reminder cancelled.**"
+									}
 								}
 
 								respond {
@@ -312,7 +326,7 @@ class Reminders : Extension() {
 	 * @author NoComment1105
 	 */
 	private suspend inline fun userReminders(event: ChatInputCommandInteractionCreateEvent): String {
-		val reminders = DatabaseHelper.getReminders()
+		val reminders = RemindMeCollection().getReminders()
 		var response = ""
 		reminders.forEach {
 			if (it.userId == event.interaction.user.id && it.guildId == guildFor(event)!!.id) {
@@ -326,7 +340,16 @@ class Reminders : Extension() {
 								} else {
 									it.customMessage ?: "none"
 								}
-							}\n---\n"
+							}\n${
+								if (it.repeating) {
+									"This reminder will repeat every `${
+										it.repeatingInterval.toString().lowercase()
+											.replace("pt", "")
+											.replace("p", "")
+									}`"
+								} else ""
+							}" +
+							"\n---\n"
 			}
 		}
 
@@ -344,7 +367,7 @@ class Reminders : Extension() {
 	 * @author NoComment1105
 	 */
 	private suspend fun postReminders() {
-		val reminders = DatabaseHelper.getReminders()
+		val reminders = RemindMeCollection().getReminders()
 
 		reminders.forEach {
 			if (it.remindTime.toEpochMilliseconds() - Clock.System.now().toEpochMilliseconds() <= 0) {
@@ -352,19 +375,23 @@ class Reminders : Extension() {
 				if (it.customMessage.isNullOrEmpty()) {
 					try {
 						channel.createMessage {
-							content = if (it.repeating) {
-								"Repeating reminder for <@${it.userId}>"
-							} else {
-								"Reminder for <@${it.userId}> set ${
-									it.initialSetTime.toDiscord(
-										TimestampType.RelativeTime
-									)
-								} at ${
-									it.initialSetTime.toDiscord(
-										TimestampType.ShortDateTime
-									)
-								}"
-							}
+							content = "${if (it.repeating) "Repeating" else ""} Reminder for <@${it.userId}> set ${
+								it.initialSetTime.toDiscord(
+									TimestampType.RelativeTime
+								)
+							} at ${
+								it.initialSetTime.toDiscord(
+									TimestampType.ShortDateTime
+								)
+							}${
+								if (it.repeating) {
+									"This reminder will repeat every `${
+										it.repeatingInterval.toString().lowercase()
+											.replace("pt", "")
+											.replace("p", "")
+									}`"
+								} else ""
+							}"
 							components {
 								linkButton {
 									label = "Jump to message"
@@ -378,7 +405,11 @@ class Reminders : Extension() {
 								kord.getGuild(it.guildId)?.name
 							}.\n\n${
 								if (it.repeating) {
-									"Repeating reminder for <@${it.userId}>"
+									"Repeating reminder for <@${it.userId}>. This reminder will repeat every `${
+										it.repeatingInterval.toString().lowercase()
+											.replace("pt", "")
+											.replace("p", "")
+									}`. Use `/reminder remove` to cancel."
 								} else {
 									"Reminder for <@${it.userId}> set ${it.initialSetTime.toDiscord(TimestampType.RelativeTime)} at ${
 										it.initialSetTime.toDiscord(
@@ -416,7 +447,11 @@ class Reminders : Extension() {
 									} else {
 										it.customMessage
 									}
-								}"
+								}.\nThis reminder will repeat every `${
+									it.repeatingInterval.toString().lowercase()
+										.replace("pt", "")
+										.replace("p", "")
+								}`. Use `/reminder remove` to cancel."
 							} else {
 								"Reminder for <@${it.userId}> set ${
 									it.initialSetTime.toDiscord(TimestampType.RelativeTime)
@@ -449,7 +484,11 @@ class Reminders : Extension() {
 										} else {
 											it.customMessage
 										}
-									}"
+									}.\nThis reminder will repeat every `${
+										it.repeatingInterval.toString().lowercase()
+											.replace("pt", "")
+											.replace("p", "")
+									}`. Use `/reminder remove` to cancel"
 								} else {
 									"Reminder for <@${it.userId}> set ${
 										it.initialSetTime.toDiscord(TimestampType.RelativeTime)
@@ -485,20 +524,21 @@ class Reminders : Extension() {
 
 				// Remove the old reminder from the database
 				if (it.repeating) {
-					DatabaseHelper.setReminder(
+					RemindMeCollection().setReminder(
 						Clock.System.now(),
 						it.guildId,
 						it.userId,
 						it.channelId,
-						it.remindTime.plus(1.days),
+						it.remindTime.plus(it.repeatingInterval!!.toDuration(TimeZone.UTC)),
 						it.originalMessageUrl,
 						it.customMessage,
 						true,
+						it.repeatingInterval,
 						it.id
 					)
-					DatabaseHelper.removeReminder(it.guildId, it.userId, it.id)
+					RemindMeCollection().removeReminder(it.guildId, it.userId, it.id)
 				} else {
-					DatabaseHelper.removeReminder(it.guildId, it.userId, it.id)
+					RemindMeCollection().removeReminder(it.guildId, it.userId, it.id)
 				}
 			}
 		}
@@ -522,6 +562,11 @@ class Reminders : Extension() {
 			name = "repeating"
 			description = "Would you like this reminder to repeat daily?"
 			defaultValue = false
+		}
+
+		val repeatingInterval by coalescingOptionalDuration {
+			name = "repeatingInterval"
+			description = "How often should the reminder repeat?"
 		}
 	}
 

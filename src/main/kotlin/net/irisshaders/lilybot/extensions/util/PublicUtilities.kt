@@ -4,6 +4,7 @@ import com.kotlindiscord.kord.extensions.DISCORD_GREEN
 import com.kotlindiscord.kord.extensions.DISCORD_RED
 import com.kotlindiscord.kord.extensions.DISCORD_YELLOW
 import com.kotlindiscord.kord.extensions.checks.anyGuild
+import com.kotlindiscord.kord.extensions.checks.guildFor
 import com.kotlindiscord.kord.extensions.commands.Arguments
 import com.kotlindiscord.kord.extensions.commands.application.slash.ephemeralSubCommand
 import com.kotlindiscord.kord.extensions.commands.converters.impl.string
@@ -25,7 +26,8 @@ import dev.kord.core.entity.channel.GuildMessageChannel
 import dev.kord.rest.builder.message.create.embed
 import dev.kord.rest.builder.message.modify.embed
 import kotlinx.datetime.Clock
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.ModerationConfigCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.configPresent
 
 /**
@@ -82,12 +84,12 @@ class PublicUtilities : Extension() {
 
 				check {
 					anyGuild()
-					configPresent()
+					configPresent(ConfigType.MODERATION)
 				}
 
 				action {
-					val config = DatabaseHelper.getConfig(guild!!.id)!!
-					val actionLog = guild?.getChannelOf<GuildMessageChannel>(config.modActionLog)
+					val config = ModerationConfigCollection().getConfig(guildFor(event)!!.id)!!
+					val actionLog = guild?.getChannelOf<GuildMessageChannel>(config.channel)
 
 					val requester = user.asUser()
 					val requesterAsMember = requester.asMember(guild!!.id)
@@ -275,12 +277,12 @@ class PublicUtilities : Extension() {
 
 				check {
 					anyGuild()
-					configPresent()
+					configPresent(ConfigType.MODERATION)
 				}
 
 				action {
-					val config = DatabaseHelper.getConfig(guild!!.id)!!
-					val actionLog = guild?.getChannelOf<GuildMessageChannel>(config.modActionLog)
+					val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+					val actionLog = guild?.getChannelOf<GuildMessageChannel>(config.channel)
 
 					// Check the user has a nickname to clear, avoiding errors and useless action-log notifications
 					if (user.fetchMember(guild!!.id).nickname == null) {

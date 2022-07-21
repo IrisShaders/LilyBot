@@ -8,7 +8,8 @@ import dev.kord.core.behavior.channel.createEmbed
 import dev.kord.core.behavior.getChannelOf
 import dev.kord.core.entity.channel.GuildMessageChannel
 import dev.kord.core.event.gateway.ReadyEvent
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.Cleanups
+import net.irisshaders.lilybot.database.collections.StatusCollection
 import net.irisshaders.lilybot.utils.ONLINE_STATUS_CHANNEL
 import net.irisshaders.lilybot.utils.TEST_GUILD_ID
 import net.irisshaders.lilybot.utils.updateDefaultPresence
@@ -45,7 +46,7 @@ class StartupHooks : Extension() {
 				 * @author tempest15
 				 * @since 3.2.0
 				 */
-				DatabaseHelper.cleanupThreadData(kord)
+				Cleanups.cleanupThreadData(kord)
 
 				/**
 				 * This function is called to remove any guilds in the database that haven't had Lily in them for more than
@@ -54,20 +55,20 @@ class StartupHooks : Extension() {
 				 * @author NoComment1105
 				 * @since 3.2.0
 				 */
-				DatabaseHelper.cleanupGuildData()
+				Cleanups.cleanupGuildData()
 
 				/**
 				 * Check the status value in the database. If it is "default", set the status to watching over X guilds,
 				 * else the database value.
 				 */
-				if (DatabaseHelper.getStatus() == "default") {
-					updateDefaultPresence()
-				} else {
-					this@event.kord.editPresence {
-						status = PresenceStatus.Online
-						playing(DatabaseHelper.getStatus())
-					}
-				}
+ 				if (StatusCollection().getStatus() == "default") {
+ 					updateDefaultPresence()
+ 				} else {
+ 					this@event.kord.editPresence {
+ 						status = PresenceStatus.Online
+ 						playing(StatusCollection().getStatus())
+ 					}
+ 				}
 			}
 		}
 	}

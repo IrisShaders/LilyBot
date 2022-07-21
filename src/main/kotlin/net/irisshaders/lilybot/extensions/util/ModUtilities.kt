@@ -4,6 +4,7 @@ import com.kotlindiscord.kord.extensions.DISCORD_BLACK
 import com.kotlindiscord.kord.extensions.DISCORD_BLURPLE
 import com.kotlindiscord.kord.extensions.DISCORD_WHITE
 import com.kotlindiscord.kord.extensions.checks.anyGuild
+import com.kotlindiscord.kord.extensions.checks.guildFor
 import com.kotlindiscord.kord.extensions.checks.hasPermission
 import com.kotlindiscord.kord.extensions.commands.Arguments
 import com.kotlindiscord.kord.extensions.commands.application.slash.ephemeralSubCommand
@@ -40,7 +41,9 @@ import dev.kord.rest.builder.message.modify.embed
 import dev.kord.rest.request.KtorRequestException
 import kotlinx.coroutines.flow.toList
 import kotlinx.datetime.Clock
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.ModerationConfigCollection
+import net.irisshaders.lilybot.database.collections.StatusCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.TEST_GUILD_ID
 import net.irisshaders.lilybot.utils.botHasChannelPerms
 import net.irisshaders.lilybot.utils.configPresent
@@ -66,26 +69,20 @@ class ModUtilities : Extension() {
 
 			check {
 				anyGuild()
-				configPresent()
+				configPresent(ConfigType.MODERATION)
 				hasPermission(Permission.ModerateMembers)
 				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
 				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
 			}
 			action {
-				val config = DatabaseHelper.getConfig(guild!!.id)!!
-				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
-				val targetChannel: GuildMessageChannel
-				try {
-					targetChannel =
-						if (arguments.channel != null) {
-							guild!!.getChannelOf(arguments.channel!!.id)
-						} else {
-							channel.asChannelOf()
-						}
-				} catch (e: EntityNotFoundException) {
-					respond { content = "Channel not found." }
-					return@action
-				}
+				val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
+				val targetChannel: GuildMessageChannel =
+					if (arguments.channel != null) {
+						guild!!.getChannelOf(arguments.channel!!.id)
+					} else {
+						channel.asChannelOf()
+					}
 				val createdMessage: Message
 
 				try {
@@ -158,7 +155,7 @@ class ModUtilities : Extension() {
 
 			check {
 				anyGuild()
-				configPresent()
+				configPresent(ConfigType.MODERATION)
 				hasPermission(Permission.ModerateMembers)
 				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
 			}
@@ -172,8 +169,8 @@ class ModUtilities : Extension() {
 					channel
 				}
 
-				val config = DatabaseHelper.getConfig(guild!!.id)!!
-				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+				val config = ModerationConfigCollection().getConfig(guildFor(event)!!.id)!!
+				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 				val message: Message
 
 				try {
@@ -318,7 +315,7 @@ class ModUtilities : Extension() {
 
 				check {
 					hasPermission(Permission.Administrator)
-					configPresent()
+					configPresent(ConfigType.MODERATION)
 				}
 
 				action {
@@ -328,8 +325,8 @@ class ModUtilities : Extension() {
 						return@action
 					}
 
-					val config = DatabaseHelper.getConfig(guild!!.id)!!
-					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+				val config = ModerationConfigCollection().getConfig(guildFor(event)!!.id)!!
+				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 
 					// Update the presence in the action
 					this@ephemeralSlashCommand.kord.editPresence {
@@ -337,8 +334,8 @@ class ModUtilities : Extension() {
 						playing(arguments.presenceArgument)
 					}
 
-					// Store the new presence in the database for if there is a restart
-					DatabaseHelper.setStatus(arguments.presenceArgument)
+				// Store the new presence in the database for if there is a restart
+				StatusCollection().setStatus(arguments.presenceArgument)
 
 					respond { content = "Presence set to `${arguments.presenceArgument}`" }
 
@@ -360,7 +357,7 @@ class ModUtilities : Extension() {
 
 				check {
 					hasPermission(Permission.Administrator)
-					configPresent()
+					configPresent(ConfigType.MODERATION)
 				}
 
 				action {
@@ -371,13 +368,13 @@ class ModUtilities : Extension() {
 					}
 
 					// Store the new presence in the database for if there is a restart
-					DatabaseHelper.setStatus("default")
+					StatusCollection().setStatus("default")
 
 					updateDefaultPresence()
 					val guilds = this@ephemeralSlashCommand.kord.guilds.toList().size
 
-					val config = DatabaseHelper.getConfig(guild!!.id)!!
-					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+					val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 
 					respond { content = "Presence set to default" }
 

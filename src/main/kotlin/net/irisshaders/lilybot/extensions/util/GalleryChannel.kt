@@ -23,7 +23,9 @@ import dev.kord.core.event.message.MessageCreateEvent
 import dev.kord.core.exception.EntityNotFoundException
 import dev.kord.rest.builder.message.create.embed
 import kotlinx.coroutines.delay
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.GalleryChannelCollection
+import net.irisshaders.lilybot.database.collections.ModerationConfigCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.botHasChannelPerms
 import net.irisshaders.lilybot.utils.configPresent
 
@@ -54,17 +56,17 @@ class GalleryChannel : Extension() {
 
 				check {
 					anyGuild()
-					configPresent()
+					configPresent(ConfigType.MODERATION)
 					hasPermission(Permission.ManageGuild)
 					requireBotPermissions(Permission.ManageChannels, Permission.ManageMessages)
 					botHasChannelPerms(Permissions(Permission.ManageChannels, Permission.ManageMessages))
 				}
 
 				action {
-					val config = DatabaseHelper.getConfig(guild!!.id)!!
-					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+					val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 
-					DatabaseHelper.getGalleryChannels(guildFor(event)!!.id).forEach {
+					GalleryChannelCollection().getChannels(guildFor(event)!!.id).forEach {
 						if (channel.asChannel().id == it.channelId) {
 							respond {
 								content = "This channel is already a gallery channel!"
@@ -73,7 +75,7 @@ class GalleryChannel : Extension() {
 						}
 					}
 
-					DatabaseHelper.setGalleryChannel(guild!!.id, channel.asChannel().id)
+					GalleryChannelCollection().setChannel(guild!!.id, channel.asChannel().id)
 
 					respond {
 						content = "Set channel as gallery channel."
@@ -100,20 +102,20 @@ class GalleryChannel : Extension() {
 
 				check {
 					anyGuild()
-					configPresent()
+					configPresent(ConfigType.MODERATION)
 					hasPermission(Permission.ManageGuild)
 					requireBotPermissions(Permission.ManageChannels)
 					botHasChannelPerms(Permissions(Permission.ManageChannels))
 				}
 
 				action {
-					val config = DatabaseHelper.getConfig(guild!!.id)!!
-					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+					val config = ModerationConfigCollection().getConfig(guildFor(event)!!.id)!!
+					val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 					var channelFound = false
 
-					DatabaseHelper.getGalleryChannels(guildFor(event)!!.id).forEach {
+					GalleryChannelCollection().getChannels(guildFor(event)!!.id).forEach {
 						if (channel.asChannel().id == it.channelId) {
-							DatabaseHelper.deleteGalleryChannel(guild!!.id, channel.asChannel().id)
+							GalleryChannelCollection().removeChannel(guild!!.id, channel.asChannel().id)
 							channelFound = true
 						}
 					}
@@ -158,7 +160,7 @@ class GalleryChannel : Extension() {
 				action {
 					var channels = ""
 
-					DatabaseHelper.getGalleryChannels(guildFor(event)!!.id).forEach {
+					GalleryChannelCollection().getChannels(guildFor(event)!!.id).forEach {
 						channels += "<#${it.channelId}> "
 					}
 
@@ -187,7 +189,7 @@ class GalleryChannel : Extension() {
 			}
 
 			action {
-				DatabaseHelper.getGalleryChannels(guildFor(event)!!.id).forEach {
+				GalleryChannelCollection().getChannels(guildFor(event)!!.id).forEach {
 					// If there are no attachments to the message and the channel we're in is an image channel
 					if (event.message.channelId == it.channelId && event.message.attachments.isEmpty()) {
 						// We delay to give the message a chance to populate with an embed, if it is a link to imgur etc.

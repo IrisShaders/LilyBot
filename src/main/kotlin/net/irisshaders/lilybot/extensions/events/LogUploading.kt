@@ -3,6 +3,7 @@ package net.irisshaders.lilybot.extensions.events
 import com.kotlindiscord.kord.extensions.DISCORD_PINK
 import com.kotlindiscord.kord.extensions.DISCORD_RED
 import com.kotlindiscord.kord.extensions.checks.anyGuild
+import com.kotlindiscord.kord.extensions.checks.guildFor
 import com.kotlindiscord.kord.extensions.components.components
 import com.kotlindiscord.kord.extensions.components.ephemeralButton
 import com.kotlindiscord.kord.extensions.extensions.Extension
@@ -37,7 +38,9 @@ import kotlinx.datetime.Clock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.SupportConfigCollection
+import net.irisshaders.lilybot.database.collections.ThreadsCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.botHasChannelPerms
 import net.irisshaders.lilybot.utils.configPresent
 import java.io.ByteArrayInputStream
@@ -71,12 +74,12 @@ class LogUploading : Extension() {
 					event.message.getChannelOrNull() !is MessageChannel
 				}
 				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
-				configPresent()
+				configPresent(ConfigType.SUPPORT)
 			}
 			action {
-				val config = DatabaseHelper.getConfig(event.guildId!!)!!
+				val supportConfig = SupportConfigCollection().getConfig(guildFor(event)!!.id)!!
 				var deferUploadUntilThread = false
-				if (config.supportChannel != null && event.message.channel.id == config.supportChannel) {
+				if (supportConfig.enabled && event.message.channel.id == supportConfig.channel) {
 					deferUploadUntilThread = true
 				}
 
@@ -85,9 +88,9 @@ class LogUploading : Extension() {
 
 				if (deferUploadUntilThread) {
 					delay(1500) // Delay to allow for thread creation
-					DatabaseHelper.getOwnerThreads(event.member!!.id).forEach {
+					ThreadsCollection().getOwnerThreads(event.member!!.id).forEach {
 						if (event.getGuild()!!.getChannelOf<TextChannelThread>(it.threadId).parentId ==
-							config.supportChannel
+							supportConfig.channel
 						) {
 							uploadChannel = event.getGuild()!!.getChannelOf<GuildMessageChannel>(it.threadId)
 						}

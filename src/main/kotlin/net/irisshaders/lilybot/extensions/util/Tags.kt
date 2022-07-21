@@ -29,7 +29,9 @@ import dev.kord.core.behavior.getChannelOf
 import dev.kord.core.entity.channel.GuildMessageChannel
 import dev.kord.rest.builder.message.create.embed
 import kotlinx.datetime.Clock
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.ModerationConfigCollection
+import net.irisshaders.lilybot.database.collections.TagsCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.botHasChannelPerms
 import net.irisshaders.lilybot.utils.configPresent
 
@@ -53,13 +55,12 @@ class Tags : Extension() {
 			description = "Preview a tag's contents without sending it publicly."
 
 			check {
-				configPresent()
 				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
 				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
 			}
 
 			action {
-				val tagFromDatabase = DatabaseHelper.getTag(guild!!.id, arguments.tagName) ?: run {
+				val tagFromDatabase = TagsCollection().getTag(guild!!.id, arguments.tagName) ?: run {
 					respond {
 						content = "Unable to find tag `${arguments.tagName}` for preview. " +
 								"Be sure it exists and you've typed it correctly."
@@ -110,7 +111,7 @@ class Tags : Extension() {
 			}
 
 			action {
-				val tagFromDatabase = DatabaseHelper.getTag(guild!!.id, arguments.tagName) ?: run {
+				val tagFromDatabase = TagsCollection().getTag(guild!!.id, arguments.tagName) ?: run {
 					respond {
 						content = "Unable to find tag `${arguments.tagName}`. " +
 								"Be sure it exists and you've typed it correctly."
@@ -209,17 +210,17 @@ class Tags : Extension() {
 
 			check {
 				anyGuild()
-				configPresent()
+				configPresent(ConfigType.MODERATION)
 				hasPermission(Permission.ModerateMembers)
 				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
 				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
 			}
 
 			action {
-				val config = DatabaseHelper.getConfig(guild!!.id)!!
-				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+				val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 
-				if (DatabaseHelper.getTag(guild!!.id, arguments.tagName) != null) {
+				if (TagsCollection().getTag(guild!!.id, arguments.tagName) != null) {
 					respond { content = "A tag with that name already exists in this guild." }
 					return@action
 				}
@@ -232,7 +233,7 @@ class Tags : Extension() {
 					return@action
 				}
 
-				DatabaseHelper.setTag(
+				TagsCollection().setTag(
 					guild!!.id,
 					arguments.tagName,
 					arguments.tagTitle,
@@ -283,7 +284,7 @@ class Tags : Extension() {
 
 			check {
 				anyGuild()
-				configPresent()
+				configPresent(ConfigType.MODERATION)
 				hasPermission(Permission.ModerateMembers)
 				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
 				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
@@ -291,17 +292,17 @@ class Tags : Extension() {
 
 			action {
 				// Check to make sure the tag exists in the database
-				if (DatabaseHelper.getTag(guild!!.id, arguments.tagName)?.name == null) {
+				if (TagsCollection().getTag(guild!!.id, arguments.tagName)?.name == null) {
 					respond {
 						content = "Unable to find tag `${arguments.tagName}`! Does this tag exist?"
 					}
 					return@action
 				}
 
-				val config = DatabaseHelper.getConfig(guild!!.id)!!
-				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+				val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 
-				DatabaseHelper.deleteTag(guild!!.id, arguments.tagName)
+				TagsCollection().removeTag(guild!!.id, arguments.tagName)
 
 				actionLog.createEmbed {
 					title = "Tag deleted!"
@@ -324,27 +325,27 @@ class Tags : Extension() {
 
 			check {
 				anyGuild()
-				configPresent()
+				configPresent(ConfigType.MODERATION)
 				hasPermission(Permission.ModerateMembers)
 				requireBotPermissions(Permission.SendMessages, Permission.EmbedLinks)
 				botHasChannelPerms(Permissions(Permission.SendMessages, Permission.EmbedLinks))
 			}
 
 			action {
-				val config = DatabaseHelper.getConfig(guild!!.id)!!
-				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.modActionLog)
+				val config = ModerationConfigCollection().getConfig(guild!!.id)!!
+				val actionLog = guild!!.getChannelOf<GuildMessageChannel>(config.channel)
 
-				if (DatabaseHelper.getTag(guild!!.id, arguments.tagName) == null) {
+				if (TagsCollection().getTag(guild!!.id, arguments.tagName) == null) {
 					respond { content = "Unable to find tag `${arguments.tagName}`! Does this tag exist?" }
 					return@action
 				}
 
-				val originalName = DatabaseHelper.getTag(guild!!.id, arguments.tagName)!!.name
-				val originalTitle = DatabaseHelper.getTag(guild!!.id, arguments.tagName)!!.tagTitle
-				val originalValue = DatabaseHelper.getTag(guild!!.id, arguments.tagName)!!.tagValue
-				val originalAppearance = DatabaseHelper.getTag(guild!!.id, arguments.tagName)!!.tagAppearance
+				val originalName = TagsCollection().getTag(guild!!.id, arguments.tagName)!!.name
+				val originalTitle = TagsCollection().getTag(guild!!.id, arguments.tagName)!!.tagTitle
+				val originalValue = TagsCollection().getTag(guild!!.id, arguments.tagName)!!.tagValue
+				val originalAppearance = TagsCollection().getTag(guild!!.id, arguments.tagName)!!.tagAppearance
 
-				DatabaseHelper.deleteTag(guild!!.id, arguments.tagName)
+				TagsCollection().removeTag(guild!!.id, arguments.tagName)
 
 				if (arguments.newValue != null && arguments.newValue!!.length > 1024) {
 					respond {
@@ -355,7 +356,7 @@ class Tags : Extension() {
 					return@action
 				}
 
-				DatabaseHelper.setTag(
+				TagsCollection().setTag(
 					guild!!.id,
 					arguments.newName ?: originalName,
 					arguments.newTitle ?: originalTitle,
@@ -426,7 +427,7 @@ class Tags : Extension() {
 
 			action {
 				val pagesObj = Pages()
-				val tags = DatabaseHelper.getAllTags(guild!!.id)
+				val tags = TagsCollection().getAllTags(guild!!.id)
 
 				tags.chunked(10).forEach { tag ->
 					var response = ""
@@ -465,7 +466,7 @@ class Tags : Extension() {
 			description = "The name of the tag you want to call"
 
 			autoComplete {
-				val tags = DatabaseHelper.getAllTags(data.guildId.value!!)
+				val tags = TagsCollection().getAllTags(data.guildId.value!!)
 				val map = mutableMapOf<String, String>()
 
 				tags.forEach {
@@ -488,7 +489,7 @@ class Tags : Extension() {
 			description = "The name of the tag"
 
 			autoComplete {
-				val tags = DatabaseHelper.getAllTags(data.guildId.value!!)
+				val tags = TagsCollection().getAllTags(data.guildId.value!!)
 				val map = mutableMapOf<String, String>()
 
 				// Add each tag in the database to the tag variable
@@ -542,7 +543,7 @@ class Tags : Extension() {
 			description = "The name of the tag you're editing"
 
 			autoComplete {
-				val tags = DatabaseHelper.getAllTags(data.guildId.value!!)
+				val tags = TagsCollection().getAllTags(data.guildId.value!!)
 				val map = mutableMapOf<String, String>()
 
 				// Add each tag in the database to the tag variable

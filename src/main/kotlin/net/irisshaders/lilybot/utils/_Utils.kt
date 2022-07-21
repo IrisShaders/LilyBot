@@ -1,11 +1,13 @@
 package net.irisshaders.lilybot.utils
 
+import com.kotlindiscord.kord.extensions.builders.ExtensibleBotBuilder
 import com.kotlindiscord.kord.extensions.checks.channelFor
 import com.kotlindiscord.kord.extensions.checks.guildFor
 import com.kotlindiscord.kord.extensions.checks.types.CheckContext
 import com.kotlindiscord.kord.extensions.commands.application.slash.EphemeralSlashCommandContext
 import com.kotlindiscord.kord.extensions.extensions.Extension
 import com.kotlindiscord.kord.extensions.types.respond
+import com.kotlindiscord.kord.extensions.utils.loadModule
 import dev.kord.common.entity.ChannelType
 import dev.kord.common.entity.Permissions
 import dev.kord.common.entity.PresenceStatus
@@ -17,7 +19,24 @@ import dev.kord.core.exception.EntityNotFoundException
 import dev.kord.core.supplier.EntitySupplyStrategy
 import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
+import net.irisshaders.lilybot.database.Database
+import net.irisshaders.lilybot.database.collections.ConfigMetaCollection
+import net.irisshaders.lilybot.database.collections.GalleryChannelCollection
+import net.irisshaders.lilybot.database.collections.GuildLeaveTimeCollection
+import net.irisshaders.lilybot.database.collections.LoggingConfigCollection
+import net.irisshaders.lilybot.database.collections.MainMetaCollection
+import net.irisshaders.lilybot.database.collections.ModerationConfigCollection
+import net.irisshaders.lilybot.database.collections.RemindMeCollection
+import net.irisshaders.lilybot.database.collections.RoleMenuCollection
+import net.irisshaders.lilybot.database.collections.StatusCollection
+import net.irisshaders.lilybot.database.collections.SupportConfigCollection
+import net.irisshaders.lilybot.database.collections.TagsCollection
+import net.irisshaders.lilybot.database.collections.ThreadsCollection
+import net.irisshaders.lilybot.database.collections.WarnCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
+import org.koin.dsl.bind
 
 @PublishedApi
 internal val utilsLogger = KotlinLogging.logger("Checks Logger")
@@ -29,7 +48,7 @@ internal val utilsLogger = KotlinLogging.logger("Checks Logger")
  * @author NoComment1105
  * @since 3.2.0
  */
-suspend inline fun CheckContext<*>.configPresent() {
+suspend inline fun CheckContext<*>.configPresent(vararg configType: ConfigType) {
 	if (!passed) {
 		return
 	}
@@ -37,14 +56,45 @@ suspend inline fun CheckContext<*>.configPresent() {
 	// Prevent commands being run in DMs, although [anyGuild] should still be used as backup
 	guildFor(event) ?: fail("Must be in a server")
 
-	// Check all not-null values in the database are not null
-	if (DatabaseHelper.getConfig(guildFor(event)!!.id)?.modActionLog == null ||
-		DatabaseHelper.getConfig(guildFor(event)!!.id)?.moderatorsPing == null ||
-		DatabaseHelper.getConfig(guildFor(event)!!.id)?.messageLogs == null ||
-		DatabaseHelper.getConfig(guildFor(event)!!.id)?.joinChannel == null
-	) {
-		fail("Unable to access config for this guild! Please inform a member of staff")
-	} else pass()
+	if (configType.isEmpty()) {
+		fail("There is no config type provided in the code. Please inform the developers immediately!")
+	}
+
+	// Look at the config type and check the presence of the config in the database.
+	configType.forEach {
+		when (it) {
+			ConfigType.SUPPORT ->
+				if (SupportConfigCollection().getConfig(guildFor(event)!!.id) == null) {
+					fail("Unable to access Support config for this guild! Please inform a member of staff.")
+				} else {
+					pass()
+				}
+
+			ConfigType.MODERATION ->
+				if (ModerationConfigCollection().getConfig(guildFor(event)!!.id) == null) {
+					fail("Unable to access Moderation config for this guild! Please inform a member of staff.")
+				} else {
+					pass()
+				}
+
+			ConfigType.LOGGING ->
+				if (LoggingConfigCollection().getConfig(guildFor(event)!!.id) == null) {
+					fail("Unable to access Logging config for this guild! Please inform a member of staff.")
+				} else {
+					pass()
+				}
+
+			ConfigType.ALL ->
+				if (SupportConfigCollection().getConfig(guildFor(event)!!.id) == null ||
+					ModerationConfigCollection().getConfig(guildFor(event)!!.id) == null ||
+					LoggingConfigCollection().getConfig(guildFor(event)!!.id) == null
+				) {
+					fail("Unable to access config for this guild! Please inform a member of staff.")
+				} else {
+					pass()
+				}
+		}
+	}
 }
 
 /**
@@ -118,8 +168,8 @@ suspend inline fun CheckContext<*>.botHasChannelPerms(permissions: Permissions) 
  * @since 2.1.0
  */
 suspend inline fun EphemeralSlashCommandContext<*>.isBotOrModerator(user: User, commandName: String): String? {
-	val moderatorRoleId = DatabaseHelper.getConfig(guild!!.id)?.moderatorsPing
-	moderatorRoleId ?: run {
+	val moderatorRoleId = ModerationConfigCollection().getConfig(guild!!.id)?.team
+	ModerationConfigCollection().getConfig(guild!!.id) ?: run {
 		respond {
 			content = "**Error:** Unable to access configuration for this guild! Is your configuration set?"
 		}
@@ -156,7 +206,7 @@ suspend inline fun EphemeralSlashCommandContext<*>.isBotOrModerator(user: User, 
  * @since 3.4.5
  */
 suspend inline fun Extension.updateDefaultPresence() {
-	if (DatabaseHelper.getStatus() != "default") {
+	if (StatusCollection().getStatus() != "default") {
 		return
 	}
 
@@ -174,3 +224,43 @@ suspend inline fun Extension.updateDefaultPresence() {
  * @since 3.4.5
  */
 suspend inline fun Extension.getGuildCount() = kord.with(EntitySupplyStrategy.cacheWithRestFallback).guilds.count()
+
+/**
+ * This function loads the database and checks if it is up-to-date. If it isn't, it will update the database via
+ * migrations.
+ *
+ * @since 4.0.0
+ */
+suspend inline fun ExtensibleBotBuilder.database(migrate: Boolean) {
+	val db = Database()
+
+	hooks {
+		beforeKoinSetup {
+			loadModule {
+				single { db } bind Database::class
+			}
+
+			loadModule {
+				single { ModerationConfigCollection() } bind ModerationConfigCollection::class
+				single { SupportConfigCollection() } bind SupportConfigCollection::class
+				single { LoggingConfigCollection() } bind LoggingConfigCollection::class
+				single { GalleryChannelCollection() } bind GalleryChannelCollection::class
+				single { GuildLeaveTimeCollection() } bind GuildLeaveTimeCollection::class
+				single { MainMetaCollection() } bind MainMetaCollection::class
+				single { ConfigMetaCollection() } bind ConfigMetaCollection::class
+				single { RemindMeCollection() } bind RemindMeCollection::class
+				single { RoleMenuCollection() } bind RoleMenuCollection::class
+				single { StatusCollection() } bind StatusCollection::class
+				single { TagsCollection() } bind TagsCollection::class
+				single { ThreadsCollection() } bind ThreadsCollection::class
+				single { WarnCollection() } bind WarnCollection::class
+			}
+
+			if (migrate) {
+				runBlocking {
+					db.migrate()
+				}
+			}
+		}
+	}
+}

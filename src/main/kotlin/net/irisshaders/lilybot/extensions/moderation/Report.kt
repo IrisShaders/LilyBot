@@ -51,8 +51,10 @@ import dev.kord.rest.builder.message.create.embed
 import dev.kord.rest.request.KtorRequestException
 import dev.kord.rest.request.RestRequestException
 import kotlinx.datetime.Clock
-import net.irisshaders.lilybot.utils.ConfigData
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.LoggingConfigCollection
+import net.irisshaders.lilybot.database.collections.ModerationConfigCollection
+import net.irisshaders.lilybot.database.entities.ModerationConfigData
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.configPresent
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -89,8 +91,9 @@ suspend inline fun Report.reportMessageCommand() = unsafeMessageCommand {
 	}
 
 	action {
-		val config = DatabaseHelper.getConfig(guild!!.id)!!
-		val messageLog = guild!!.getChannelOf<GuildMessageChannel>(config.messageLogs)
+		val loggingConfig = LoggingConfigCollection().getConfig(guild!!.id)!!
+		val moderationConfig = ModerationConfigCollection().getConfig(guild!!.id)!!
+		val messageLog = guild!!.getChannelOf<GuildMessageChannel>(loggingConfig.messageChannel)
 		val reportedMessage: Message
 		val messageAuthor: Member?
 
@@ -114,7 +117,7 @@ suspend inline fun Report.reportMessageCommand() = unsafeMessageCommand {
 		createReportModal(
 			event.interaction as ModalParentInteractionBehavior,
 			user,
-			config,
+			moderationConfig,
 			messageLog,
 			reportedMessage,
 			messageAuthor
@@ -138,12 +141,13 @@ suspend inline fun Report.reportSlashCommand() = unsafeSlashCommand(::ManualRepo
 
 	check {
 		anyGuild()
-		configPresent()
+		configPresent(ConfigType.LOGGING, ConfigType.MODERATION)
 	}
 
 	action {
-		val config = DatabaseHelper.getConfig(guild!!.id)!!
-		val messageLog = guild!!.getChannelOf<GuildMessageChannel>(config.messageLogs)
+		val loggingConfig = LoggingConfigCollection().getConfig(guild!!.id)!!
+		val moderationConfig = ModerationConfigCollection().getConfig(guild!!.id)!!
+		val messageLog = guild!!.getChannelOf<GuildMessageChannel>(loggingConfig.messageChannel)
 		val channel: MessageChannel
 		val reportedMessage: Message
 		val messageAuthor: Member?
@@ -180,7 +184,7 @@ suspend inline fun Report.reportSlashCommand() = unsafeSlashCommand(::ManualRepo
 		createReportModal(
 			event.interaction as ModalParentInteractionBehavior,
 			user,
-			config,
+			moderationConfig,
 			messageLog,
 			reportedMessage,
 			messageAuthor
@@ -203,7 +207,7 @@ suspend inline fun Report.reportSlashCommand() = unsafeSlashCommand(::ManualRepo
 suspend fun createReportModal(
 	inputInteraction: ModalParentInteractionBehavior,
 	user: UserBehavior,
-	config: ConfigData,
+	config: ModerationConfigData,
 	messageLog: GuildMessageChannel,
 	reportedMessage: Message,
 	messageAuthor: Member?,
@@ -237,8 +241,8 @@ suspend fun createReportModal(
 		messageLog,
 		messageAuthor,
 		reportedMessage,
-		config.moderatorsPing,
-		config.modActionLog,
+		config.team,
+		config.channel,
 		reason,
 		modalResponse
 	)

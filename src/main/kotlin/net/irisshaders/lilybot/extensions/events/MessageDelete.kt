@@ -2,18 +2,19 @@ package net.irisshaders.lilybot.extensions.events
 
 import com.kotlindiscord.kord.extensions.DISCORD_PINK
 import com.kotlindiscord.kord.extensions.checks.anyGuild
+import com.kotlindiscord.kord.extensions.checks.guildFor
 import com.kotlindiscord.kord.extensions.extensions.Extension
 import com.kotlindiscord.kord.extensions.extensions.event
 import dev.kord.core.behavior.channel.createEmbed
 import dev.kord.core.behavior.getChannelOf
 import dev.kord.core.entity.channel.GuildMessageChannel
 import dev.kord.core.event.message.MessageDeleteEvent
-import dev.kord.core.exception.EntityNotFoundException
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import net.irisshaders.lilybot.api.pluralkit.PK_API_DELAY
 import net.irisshaders.lilybot.api.pluralkit.PluralKit
-import net.irisshaders.lilybot.utils.DatabaseHelper
+import net.irisshaders.lilybot.database.collections.LoggingConfigCollection
+import net.irisshaders.lilybot.extensions.config.ConfigType
 import net.irisshaders.lilybot.utils.configPresent
 
 /**
@@ -33,7 +34,7 @@ class MessageDelete : Extension() {
 		event<MessageDeleteEvent> {
 			check {
 				anyGuild()
-				configPresent()
+				configPresent(ConfigType.LOGGING)
 			}
 
 			action {
@@ -41,15 +42,10 @@ class MessageDelete : Extension() {
 				if (event.message?.author?.isBot == true) return@action
 				if (PluralKit.containsPkChatCommandPrefix(event.message!!)) return@action
 
-				val config = DatabaseHelper.getConfig(event.guild!!.id)!!
+				val config = LoggingConfigCollection().getConfig(guildFor(event)!!.id)!!
 
 				val guild = kord.getGuild(event.guildId!!)
-				var messageLog: GuildMessageChannel? = null
-				try {
-					messageLog = guild?.getChannelOf(config.messageLogs)
-				} catch (e: EntityNotFoundException) {
-					DatabaseHelper.clearConfig(event.guildId!!) // Clear the config to make the user fix it
-				}
+				val messageLog = guild?.getChannelOf<GuildMessageChannel>(config.messageChannel)
 				val eventMessage = event.message
 				val messageContent = if (eventMessage?.asMessageOrNull() != null) {
 					if (eventMessage.asMessageOrNull().content.length > 1024) {
